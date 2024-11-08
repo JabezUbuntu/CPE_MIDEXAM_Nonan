@@ -1,0 +1,194 @@
+- hosts: all
+  become: true
+  tasks:
+
+    - name: install mariadb package (CentOS)
+      dnf:
+        name: mariadb-server
+        state: latest
+      when: ansible_distribution == "CentOS"
+
+    - name: install mariadb package (Ubuntu)
+      apt:
+        name: mariadb-server
+        state: latest
+      when: ansible_distribution == "Ubuntu"
+
+    - name: Install HTTPD & PHP (CentOS)
+      dnf:
+        name:
+          - httpd
+          - php
+        state: latest
+        update_cache: yes
+      when: ansible_distribution == "CentOS"
+
+    - name: Install Apache2 & PHP (Ubuntu)
+      apt:
+        name:
+          - apache2
+          - libapache2-mod-php
+        state: latest
+        update_cache: yes
+      when: ansible_distribution == "Ubuntu"
+
+    - name: Install Grafana Agent Flow
+      ansible.builtin.include_role:
+        name: grafana.grafana.grafana_agent
+      vars:
+        grafana_agent_mode: flow
+      # Change config file on the host to .river
+        grafana_agent_config_filename: config.river
+      # Change config file to be copied
+        grafana_agent_provisioned_config_file: /CPE232_MIDEXAM_Nonan/config.yml
+        # Remove default flags
+        grafana_agent_flags_extra:
+          server.http.listen-addr: '0.0.0.0:12345'
+
+- hosts: centOS
+  become: true
+  tasks:
+
+  - name: Install dependencies for Prometheus on CentOS
+    yum:
+      name: curl
+      state: present
+
+  - name: Download Prometheus tarball
+    get_url:
+      url: https://github.com/prometheus/prometheus/releases/download/v2.30.3/prometheus-2.30.3.linux-amd64.tar.gz
+      dest: /tmp/prometheus.tar.gz
+
+  - name: Extract Prometheus tarball
+    unarchive:
+      src: /tmp/prometheus.tar.gz
+      dest: /opt/
+      remote_src: yes
+
+  - name: Create symbolic link for Prometheus
+    file:
+      src: /opt/prometheus-2.30.3.linux-amd64
+      dest: /opt/prometheus
+      state: link
+
+  - name: Copy Prometheus service file
+    copy:
+      content: |
+        [Unit]
+        Description=Prometheus
+        Documentation=https://prometheus.io/docs/introduction/overview/
+        Wants=network-online.target
+        After=network-online.target
+
+        [Service]
+        User=root
+        ExecStart=/opt/prometheus/prometheus --config.file /opt/prometheus/prometheus.yml
+        Restart=always
+
+        [Install]
+        WantedBy=multi-user.target
+      dest: /etc/systemd/system/prometheus.service
+
+  - name: Install dependencies for Nagios on CentOS
+    yum:
+      name:
+        - httpd
+        - php
+        - wget
+        - gcc
+      state: present
+
+  - name: Download Nagios tarball
+    get_url:
+      url: https://assets.nagios.com/downloads/nagioscore/releases/nagios-4.4.6.tar.gz
+      dest: /tmp/nagios.tar.gz
+
+  - name: Extract Nagios tarball
+    unarchive:
+      src: /tmp/nagios.tar.gz
+      dest: /opt/
+      remote_src: yes
+
+  - name: Configure Nagios
+    command: ./configure --with-httpd-conf=/etc/httpd/conf.d/
+    args:
+      chdir: /opt/nagios-4.4.6
+
+  - name: Build Nagios
+    command: make all
+    args:
+      chdir: /opt/nagios-4.4.6
+
+  - name: Install Nagios
+    command: make install
+    args:
+      chdir: /opt/nagios-4.4.6
+
+  - name: Install Nagios init scripts
+    command: make install-init
+    args:
+      chdir: /opt/nagios-4.4.6
+
+  - name: Install Nagios config
+    command: make install-config
+    args:
+      chdir: /opt/nagios-4.4.6
+
+  - name: Install Nagios command mode
+    command: make install-commandmode
+    args:
+      chdir: /opt/nagios-4.4.6
+
+  - name: Install Nagios web configuration
+    command: make install-webconf
+    args:
+      chdir: /opt/nagios-4.4.6
+
+  - name: Configure Nagios Admin User
+    command: htpasswd -b -c /usr/local/nagios/etc/htpasswd.users nagiosadmin password
+
+- hosts: ubuntu
+  become: true
+  tasks:
+
+  - name: Install dependencies for Prometheus on Ubuntu
+    apt:
+      name: curl
+      state: present
+
+  - name: Download Prometheus tarball
+    get_url:
+      url: https://github.com/prometheus/prometheus/releases/download/v2.30.3/prometheus-2.30.3.linux-amd64.tar.gz
+      dest: /tmp/prometheus.tar.gz
+
+  - name: Extract Prometheus tarball
+    unarchive:
+      src: /tmp/prometheus.tar.gz
+      dest: /opt/
+      remote_src: yes
+
+  - name: Create symbolic link for Prometheus
+    file:
+      src: /opt/prometheus-2.30.3.linux-amd64
+      dest: /opt/prometheus
+      state: link
+
+  - name: Copy Prometheus service file
+    copy:
+      content: |
+        [Unit]
+        Description=Prometheus
+        Documentation=https://prometheus.io/docs/introduction/overview/
+        Wants=network-online.target
+        After=network-online.target
+
+        [Service]
+        User=root
+        ExecStart=/opt/prometheus/prometheus --config.file /opt/prometheus/prometheus.yml
+        Restart=always
+
+        [Install]
+        WantedBy=multi-user.target
+      dest: /etc/systemd/system/prometheus.service
+
+
